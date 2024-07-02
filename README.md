@@ -1,84 +1,88 @@
-# Trilogy
+# trilogy
 
-Trilogy is a client library for MySQL-compatible database servers, designed for performance, flexibility, and ease of embedding.
+Ruby bindings to the Trilogy client library
 
-It's currently in production use on github.com.
+## Installation
 
-## Features
+Add this line to your application's Gemfile:
 
-* Supports the most frequently used parts of the text protocol
-    * Handshake
-    * Password authentication
-    * Query, ping, and quit commands
+``` ruby
+gem 'trilogy'
+```
 
-* Support prepared statements (binary protocol)
+And then execute:
 
-* Low-level protocol API completely decoupled from IO
+```
+$ bundle
+```
 
-* Non-blocking client API wrapping the protocol API
+Or install it yourself as:
 
-* Blocking client API wrapping the non-blocking API
+```
+$ gem install trilogy
+```
 
-* No dependencies outside of POSIX, the C standard library & OpenSSL
+## Usage
 
-* Minimal dynamic allocation
+``` ruby
+client = Trilogy.new(host: "127.0.0.1", port: 3306, username: "root", read_timeout: 2)
+if client.ping
+  client.change_db "mydb"
 
-* MIT licensed
+  result = client.query("SELECT id, created_at FROM users LIMIT 10")
+  result.each_hash do |user|
+    p user
+  end
+end
+```
 
-## Limitations
+### Processing multiple result sets
 
-* Only supports the parts of the text protocol that are in common use.
+In order to send and receive multiple result sets, pass the `multi_statement` option when connecting.
+`Trilogy#more_results_exist?` will return true if more results exist, false if no more results exist, or raise
+an error if the respective query errored. `Trilogy#next_result` will retrieve the next result set, or return nil
+if no more results exist.
 
-* No support for `LOAD DATA INFILE` on local files
+``` ruby
+client = Trilogy.new(host: "127.0.0.1", port: 3306, username: "root", read_timeout: 2, multi_statement: true)
 
-* `trilogy_escape` assumes an ASCII-compatible connection encoding
+results = []
+results << client.query("SELECT name FROM users WHERE id = 1; SELECT name FROM users WHERE id = 2")
+results << client.next_result while client.more_results_exist?
+```
 
 ## Building
+You should use the rake commands to build/install/release the gem
+For instance:
+```shell
+bundle exec rake build
+```
 
-`make` - that's it. This will build a static `libtrilogy.a`
+## Contributing
 
-Trilogy should build out of the box on most UNIX systems which have OpenSSL installed.
+The official Ruby bindings are inside of the canonical trilogy repository itself.
 
-## API Documentation
+1. Fork it ( https://github.com/trilogy-libraries/trilogy/fork )
+2. Create your feature branch (`git checkout -b my-new-feature`)
+3. Commit your changes (`git commit -am 'Add some feature'`)
+4. Push to the branch (`git push origin my-new-feature`)
+5. Create a new Pull Request
 
-Documentation for Trilogy's various APIs can be found in these header files:
+## mysql2 gem compatibility
 
-* `blocking.h`
+The trilogy API was heavily inspired by the mysql2 gem but has a few notable
+differences:
 
-    The blocking client API. These are simply a set of convenient wrapper functions around the non-blocking client API in `client.h`
-
-* `client.h`
-
-    The non-blocking client API. Every command is split into a `_send` and `_recv` function allowing callers to wait for IO readiness externally to Trilogy
-
-* `builder.h`
-
-    MySQL-compatible packet builder API
-
-* `charset.h`
-
-    Character set and encoding tables
-
-* `error.h`
-
-    Error table. Every Trilogy function returning an `int` uses the error codes defined here
-
-* `packet_parser.h`
-
-    Streaming packet frame parser
-
-* `protocol.h`
-
-    Low-level protocol API. Provides IO-decoupled functions to parse and build packets
-
-* `reader.h`
-
-    Bounds-checked packet reader API
-
-## Bindings
-
-We maintain a [Ruby binding](contrib/ruby) in this repository. This is currently stable and production-ready.
-
-## License
-
-Trilogy is released under the [MIT license](LICENSE).
+* The `query_flags` don't inherit from the connection options hash.
+  This means that options like turning on/of casting will need to be set before
+  a query and not passed in at connect time.
+* For performance reasons there is no `application_timezone` query option. If
+  casting is enabled and your database timezone is different than what the
+  application is expecting you'll need to do the conversion yourself later.
+* While we still tag strings with the encoding configured on the field they came
+  from - for performance reasons no automatic transcoding into
+  `Encoding.default_internal` is done. Similarly to not automatically converting
+  Time objects from `database_timezone` into `application_timezone`, we leave
+  the transcoding step up to the caller.
+* There is no `as` query option. Calling `Trilogy::Result#each` will yield an array
+  of row values. If you want a hash you should use `Trilogy::Result#each_hash`.

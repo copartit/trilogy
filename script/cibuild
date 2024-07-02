@@ -1,65 +1,15 @@
-#!/bin/bash
-
+#!/bin/sh
 set -e
+cd "$(dirname "$0")/.."
 
-output_fold() {
-  # Exit early if no label provided
-  if [ -z "$1" ]; then
-    echo "output_fold(): requires a label argument."
-    return
-  fi
+if [ -d /usr/share/rbenv/shims ]; then
+  export PATH=/usr/share/rbenv/shims:$PATH
+  export RBENV_VERSION="2.6.5"
+fi
 
-  exit_value=0  # exit_value is used to record exit status of the given command
-  label=$1      # human-readable label describing what's being folded up
-  shift 1       # having retrieved the output_fold()-specific arguments, strip them off $@
+ruby -v
+bundle -v
 
-  # Only echo the tags when in CI_MODE
-  if [ "$CI_MODE" ]; then
-    echo "::group::${label}"
-  fi
+script/bootstrap
 
-  # run the remaining arguments. If the command exits non-0, the `||` will
-  # prevent the `-e` flag from seeing the failure exit code, and we'll see
-  # the second echo execute
-  "$@" || exit_value=$?
-
-  # Only echo the tags when in CI_MODE
-  if [ "$CI_MODE" ]; then
-    echo "::endgroup::"
-  fi
-
-  # preserve the exit code from the subcommand.
-  return $exit_value
-}
-
-function cleanup() {
-  echo
-  echo "::group::Shutting down services..."
-  docker compose logs db
-  docker compose down --volumes
-  echo "::endgroup::"
-}
-
-trap cleanup EXIT
-
-export CI_MODE=true
-
-if [ -z "$MYSQL_VERSION" ]; then export MYSQL_VERSION=8.0 ; fi
-if [ -z "$DISTRIBUTION" ];  then export DISTRIBUTION=debian:buster ; fi
-if [ -z "$RUBY_VERSION" ];  then export RUBY_VERSION=3.2 ; fi
-
-DISTRIBUTION_SLUG="$(echo "$DISTRIBUTION" | awk '{ gsub(":", "_") ; print $0 }')"
-export DISTRIBUTION_SLUG
-
-# Prepare the shared directory where the certificates will be stored. We need to create
-# and chmod this directory on the host so that the permissions are persisted when the
-# the directory is mounted in the containers. Since the mysql container runs as a non-root
-# user, we need to ensure that the directory is writable by all users.
-mkdir tmp/mysql-certs
-chmod 777 tmp/mysql-certs
-
-docker compose rm --stop --force --volumes
-output_fold "Pull cache image..." docker compose pull app db || true
-output_fold "Bootstrapping container..." docker compose build
-output_fold "Running tests..." docker compose run --rm app
-output_fold "Pushing cache image..." docker compose push app db || true # Don't fail if push fails
+MYSQL_SOCK=$(mysql_config --socket) script/test
