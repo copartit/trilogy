@@ -622,6 +622,10 @@ static SSL_CTX *trilogy_ssl_ctx(const trilogy_sockopt_t *opts)
             goto fail;
         }
     }
+
+    // Added the SSL_OP_IGNORE_UNEXPECTED_EOF option
+    SSL_CTX_set_options(ssl_ctx, SSL_OP_IGNORE_UNEXPECTED_EOF);
+
     return ssl_ctx;
 
 fail:
